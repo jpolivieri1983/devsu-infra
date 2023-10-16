@@ -8,6 +8,6 @@ In this repo you can find:
     - Desired amount of containers running: 2 
     - Auto Scaling configured at 80% of average cpu utilization.
 
-- Workflow yaml file (deploy-to-ecs.yml) to automatize the infrastructure creation using a GitHub Actions pipeline.
+- Workflow yaml file (.github/workflows/deploy-to-ecs.yml) to automatize the infrastructure creation using a GitHub Actions pipeline.
 
   
