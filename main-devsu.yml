@@ -8,27 +8,22 @@ Parameters:
     Type: String
     Description: 'dev/qa/prod'
     Default: "dev"
-    required: true
   myVPC:            
     Type: String
     Description: 'VPC id'
     Default: vpc-0159436c4590009b7
-    required: true
   subnetA:          
     Type: String
     Description: 'Subnet A'
     Default: subnet-0cb4f49cf8b672f24  
-    required: true             
   subnetB:                                        
     Type: String
     Description: 'Subnet B'
     Default: subnet-0180825a0c04a65c9 
-    required: true    
   myVPCCidrBlock:
     Type: String
     Description: 'cidr block for VPC'
     Default: x.x.x.x/xx      # to be defined   
-    required: true
 
 ####### ECS parameters ######
   imagenContainer:

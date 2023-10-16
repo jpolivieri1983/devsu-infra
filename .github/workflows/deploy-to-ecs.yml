@@ -1,0 +1,60 @@
+name: Cluster Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: 'stack name'
+        required: true
+        default: "Devsu"
+      environment:
+        description: 'dev/qa/prod'
+        required: true
+        default: "dev"
+      subnetA:          
+        description: 'Subnet A'
+        default: subnet-0cb4f49cf8b672f24  
+        required: true             
+      subnetB:                                        
+        description: 'Subnet B'
+        default: subnet-0180825a0c04a65c9 
+        required: true   
+      vpc:
+        description: 'VPC to deploy'
+        required: true
+        default: 'vpc-083c83366daaa668d'
+      myVPCCidrBlock:
+        description: 'cidr block used on vpc'
+        required: true
+        default: 'x.x.x.x/xx'      # to be defined
+
+jobs:
+  cloudformation:
+    name: Deploy stack to AWS
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Configure AWS credentials
+      id: creds
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Deploy cloudformation STACK
+      id: ecs-cluster
+      uses: aws-actions/aws-cloudformation-github-deploy@master
+      with:
+        name: ${{ github.event.inputs.name }}-${{ github.event.inputs.environment }}
+        template: ./main-devsu.yml
+        no-fail-on-empty-changeset: "1"
+        parameter-overrides: >-
+          myVPC=${{ github.event.inputs.vpc }},
+          subnetA=${{ github.event.inputs.subnetA }},
+          subnetB=${{ github.event.inputs.subnetB }},
+          ambiente=${{ github.event.inputs.environment }},
+          myVPCCidrBlock=${{ github.event.inputs.myVPCCidrBlock }}
+        capabilities: "CAPABILITY_NAMED_IAM"
