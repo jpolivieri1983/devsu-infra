@@ -1,0 +1,54 @@
+name: Cluster Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: 'Nombre que se le dara al stack. Nombre = name-enviroment'
+        required: true
+        default: "smartflux"
+      environment:
+        description: 'Se requiere indicar el enviroment "develop, qa, produccion'
+        required: true
+      subnetA:
+        description: 'subnet A a desplegar default DEV'
+        required: true
+        default: 'subnet-0390d857271ada493'
+      subnetB:
+        description: 'subnet B a desplegar default DEV'
+        required: true
+        default: 'subnet-02b1363f40e7c70dd'
+      vpc:
+        description: 'VPC a desplegar, default DEV'
+        required: true
+        default: 'vpc-083c83366daaa668d'
+
+jobs:
+  cloudformation:
+    name: Deploy stack to AWS
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Configure AWS credentials
+      id: creds
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Deploy cloudformation STACK
+      id: ecs-cluster
+      uses: aws-actions/aws-cloudformation-github-deploy@master
+      with:
+        name: ${{ github.event.inputs.name }}-${{ github.event.inputs.environment }}
+        template: ./templates/${{ github.event.inputs.environment }}/infra.yml
+        no-fail-on-empty-changeset: "1"
+        parameter-overrides: >-
+          myVPC=${{ github.event.inputs.vpc }},
+          subnetA=${{ github.event.inputs.subnetA }},
+          subnetB=${{ github.event.inputs.subnetB }},
+          ambiente=${{ github.event.inputs.environment }}
+        capabilities: "CAPABILITY_NAMED_IAM"

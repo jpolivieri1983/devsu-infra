@@ -1,0 +1,525 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Infra deployment for Devsu'
+
+Parameters:
+###################### General parameters ##########################
+  ambiente:
+    Type: String
+    Description: 'dev/qa/prod'
+    Default: "dev"
+    required: true
+  myVPC:            
+    Type: String
+    Description: 'VPC id'
+    Default: vpc-0159436c4590009b7
+    required: true
+  subnetA:          
+    Type: String
+    Description: 'Subnet A'
+    Default: subnet-0cb4f49cf8b672f24  
+    required: true             
+  subnetB:                                        
+    Type: String
+    Description: 'Subnet B'
+    Default: subnet-0180825a0c04a65c9 
+    required: true    
+  myVPCCidrBlock:
+    Type: String
+    Description: 'cidr block for VPC'
+    Default: x.x.x.x/xx      # to be defined   
+    required: true
+
+####### ECS parameters ######
+  imagenContainer:
+    Type: String
+    Description: 'docker image for Devsu Service'
+    Default: XXXXXXXXXXXX.dkr.ecr.us-east-1.amazonaws.com/repo-Devsu:latest     # IMAGE_NAME  
+  ContainerPortDevsu:
+    Type: Number
+    Default: 8080
+  HealthCheckPath:
+    Type: String
+    Default: /              # /healthcheck
+  MinContainers:      
+    Type: Number
+    Default: 2
+  MaxContainers:     
+    Type: Number
+    Default: 4
+  AutoScalingTargetValue:    # target CPU utilization (%)
+    Type: Number
+    Default: 80
+
+
+Resources:
+########################### EFS ##################################
+# SG for EFS 
+  EFSsecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${AWS::StackName}-sg-efs'
+      GroupDescription: Allow traffic from containers
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049        #EFS required
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref ContainerSecurityGroup    
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65000
+          SourceSecurityGroupId: !Ref ContainerSecurityGroup             
+      SecurityGroupEgress:      
+        - IpProtocol: tcp
+          FromPort: 0     
+          ToPort: 65000   
+          CidrIp: 0.0.0.0/0
+
+# IAM role to access EFS
+  EFSroleIAM:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-EFSrole' 
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonECS_FullAccess
+      Tags:
+      - Key: project
+        Value: Devsu
+      - Key: environment
+        Value: !Ref ambiente
+
+# EFS creation
+  FileSystemResource:
+    Type: 'AWS::EFS::FileSystem'
+    DependsOn: EFSroleIAM
+    Properties:
+      PerformanceMode: maxIO
+      Encrypted: true
+      FileSystemTags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-efs'
+        - Key: project
+          Value: Devsu
+        - Key: environment
+          Value: !Ref ambiente  
+      FileSystemPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action:
+              - "elasticfilesystem:*"
+            Principal: 
+                AWS: !GetAtt EFSroleIAM.Arn
+
+# Mount Target creation for subnet A
+  MountTargetResource1:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref FileSystemResource
+      SubnetId: !Ref subnetA
+      SecurityGroups:
+      - !Ref EFSsecurityGroup   
+
+# Mount Target creation for subnet B
+  MountTargetResource2:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref FileSystemResource
+      SubnetId: !Ref subnetB
+      SecurityGroups:
+      - !Ref EFSsecurityGroup   
+ 
+
+######################################### ECS ########################################
+# Cluster creation
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName:  !Sub '${AWS::StackName}-cluster' 
+
+# Logs Group creation
+  LogGroupDevsu:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join ['', [/ecs/, !Sub '${AWS::StackName}', TaskDefinitionDevsu]]
+      RetentionInDays: 180
+      Tags:
+      - Key: project
+        Value: Devsu
+      - Key: environment
+        Value: !Ref ambiente
+
+# Task Definition Devsu creation
+  TaskDefinitionDevsu:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn: LogGroupDevsu   
+    Properties:
+      Family: !Sub '${AWS::StackName}-taskDefinitionDevsu'   
+      NetworkMode: awsvpc       
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 256
+      Memory: 1GB
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn     
+      TaskRoleArn: !GetAtt TaskRole.Arn              
+      ContainerDefinitions:
+        - Name: !Sub '${AWS::StackName}-containerDevsu'   
+          MountPoints:                
+          - 
+            SourceVolume: !Ref FileSystemResource   
+            ContainerPath: "/mnt/efs"    
+          Image: !Ref imagenContainerDevsu   
+          PortMappings:
+            - ContainerPort: !Ref ContainerPortDevsu
+          LogConfiguration:       
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref LogGroupDevsu
+              awslogs-stream-prefix: ecs
+      Volumes: 
+        - Name: !Ref FileSystemResource  
+
+
+  # IAM role to execute ECS
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-ECSexecutionRole'     
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+        - 'arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess'
+        - 'arn:aws:iam::aws:policy/AWSKeyManagementServicePowerUser'
+
+  # IAM role for the containers
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-ECStaskRole'    
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess'
+        - 'arn:aws:iam::aws:policy/AWSKeyManagementServicePowerUser'    
+
+  # IAM role for auto scaling
+  AutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-ECSautoScaling'      
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole'
+  
+  #SG for the cluster/containers
+  ContainerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${AWS::StackName}-sg-container'
+      GroupDescription: !Sub '${AWS::StackName}-ECScontainerSecurityGroup'    
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPortDevsu
+          ToPort: !Ref ContainerPortDevsu
+          CidrIp: !Ref myVPCCidrBlock        
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref myVPCCidrBlock   
+
+  # Service Devsu creation
+  ServiceDevsu:
+    Type: AWS::ECS::Service
+    DependsOn:        
+      - ListenerDevsu
+      - PrivateNamespace
+      - DiscoveryServiceDevsu
+    Properties: 
+      ServiceName: !Sub '${AWS::StackName}-ECSserviceDevsu'  
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref TaskDefinitionDevsu
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+      DesiredCount: 0                       
+      HealthCheckGracePeriodSeconds: 30    
+      LaunchType: FARGATE
+      NetworkConfiguration: 
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED  #ENABLED / DISABLED  if you're using private subnets that have access to a NAT gateway
+          Subnets:
+            - !Ref subnetA
+            - !Ref subnetB
+          SecurityGroups:
+            - !Ref ContainerSecurityGroup
+      LoadBalancers:
+        - ContainerName: !Sub '${AWS::StackName}-containerDevsu' 
+          ContainerPort: !Ref ContainerPortDevsu
+          TargetGroupArn: !Ref TargetGroupDevsu
+      ServiceRegistries:
+        - RegistryArn: !GetAtt DiscoveryServiceDevsu.Arn
+          Port: 80
+    
+  # Target Group creation
+  TargetGroupDevsu:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckTimeoutSeconds: 5
+      UnhealthyThresholdCount: 2
+      HealthyThresholdCount: 2
+      Name: !Sub '${AWS::StackName}-targetGroupDevsu' 
+      Port: !Ref ContainerPortDevsu
+      Protocol: TCP   #HTTP
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 60 # default is 300
+      TargetType: ip
+      VpcId: !Ref myVPC
+  
+ # Listener creation
+  ListenerDevsu:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref TargetGroupDevsu
+          Type: forward
+      LoadBalancerArn: !Ref NetworkLoadBalancer
+      Port: !Ref ContainerPortDevsu     
+      Protocol: TCP 
+  
+   # NLB creation
+  NetworkLoadBalancer:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+      Name: !Sub '${AWS::StackName}-nlb'
+      IpAddressType: "ipv4"
+      Type: "network"
+      Scheme: "internet-facing"   #internal | internet-facing  
+      Subnets:
+        - !Ref subnetA
+        - !Ref subnetB
+      LoadBalancerAttributes:
+        - Key: "deletion_protection.enabled"
+          Value: false
+        - Key: "access_logs.s3.enabled"
+          Value: false
+        - Key: "load_balancing.cross_zone.enabled"
+          Value: false
+      Tags:
+      - Key: project
+        Value: Devsu
+      - Key: environment
+        Value: !Ref ambiente
+
+# Auto Scaling Target creation
+  AutoScalingTargetDevsu:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget 
+    DependsOn: 
+      - ServiceDevsu
+    Properties:
+      MinCapacity: !Ref MinContainers
+      MaxCapacity: !Ref MaxContainers
+      ResourceId: !Join ['/', [service, !Ref Cluster , !GetAtt ServiceDevsu.Name]]    
+      ScalableDimension: ecs:service:DesiredCount 
+      ServiceNamespace: ecs 
+      RoleARN: !GetAtt AutoScalingRole.Arn
+  
+# Auto Scaling policy creation
+  AutoScalingPolicyDevsu:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${AWS::StackName}-autoScalingPolicyDevsu'  
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref AutoScalingTargetDevsu
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 10
+        ScaleOutCooldown: 10
+        TargetValue: !Ref AutoScalingTargetValue
+
+# Private namespace creation for connectivity between tasks within the Cluster (in case more tasks are created in the future)
+  PrivateNamespace:
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+    Properties:
+        Name: !Sub '${AWS::StackName}-admision-centralizada.uss'        
+        Vpc: !Ref myVPC
+
+# Service discovery creation for connectivity between tasks within the Cluster (in case more tasks are created in the future)
+  DiscoveryServiceDevsu:
+    Type: AWS::ServiceDiscovery::Service
+    Properties: 
+      Description: Discovery Service for the Devsu
+      DnsConfig:
+        RoutingPolicy: WEIGHTED
+        DnsRecords:
+          - TTL: 60
+            Type: A
+          - TTL: 60
+            Type: SRV
+      HealthCheckCustomConfig: 
+        FailureThreshold: 1
+      Name: !Sub '${AWS::StackName}-service-discovery-Devsu'  
+      NamespaceId: !Ref PrivateNamespace
+
+
+########################### ECR ########################### 
+# Group for users
+  IAMgrupoECR:
+    Type: AWS::IAM::Group
+    Properties: 
+      GroupName: !Join [ "-", [!Ref ambiente, ECR-users]]  
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess              
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+# User for ECR
+  userECR:
+    Type: AWS::IAM::User
+    Properties:
+      Groups: 
+      - !Join [ "-", [!Ref ambiente, ECR-users]]  
+      UserName: !Sub '${AWS::StackName}-userECR' 
+      Tags:
+      - Key: project
+        Value: Devsu
+      - Key: environment
+        Value: !Ref ambiente
+
+# Repo for images 
+  RepositoryDevsu: 
+    Type: AWS::ECR::Repository
+    DependsOn: 
+      - userECR
+      - GitHubActionsUser
+    Properties: 
+      RepositoryName: !Sub '${AWS::StackName}-ecr-devsu'
+      LifecyclePolicy:
+        LifecyclePolicyText: "{\n \"rules\": [\n {\n  \"rulePriority\": 1,\n  \"description\": \"Keep last images\",\n  \"selection\": {\n  \"tagStatus\": \"any\",\n  \"countType\": \"imageCountMoreThan\",\n  \"countNumber\": 7\n },\n \"action\": {\n   \"type\": \"expire\"\n  }\n }\n ]\n}\n }"   
+      RepositoryPolicyText: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Sid: AllowPushPull
+            Effect: Allow
+            Principal: 
+              AWS: 
+                - !GetAtt userECR.Arn   
+                - !GetAtt GitHubActionsUser.Arn 
+                #- !Ref GitHubActionsUser
+              Service: 
+                - ecs-tasks.amazonaws.com                  
+            Action: 
+              - "ecr:GetAuthorizationToken"
+              - "ecr:GetDownloadUrlForLayer"
+              - "ecr:BatchGetImage"
+              - "ecr:BatchCheckLayerAvailability"
+              - "ecr:PutImage"
+              - "ecr:InitiateLayerUpload"
+              - "ecr:UploadLayerPart"
+              - "ecr:CompleteLayerUpload"
+              - "ecr:*"
+      Tags:
+      - Key: project
+        Value: Devsu
+      - Key: environment
+        Value: !Ref ambiente
+
+
+############################# IAM ######################### 
+# Policy to access and execute the ECS deployment
+  gitHubPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      Description: 'gitHub policy para ejecutar el pipeline'
+      ManagedPolicyName: !Sub '${AWS::StackName}-gitHubPolicy'  
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'ecs:RegisterTaskDefinition'
+              - 'iam:PassRole'
+              - 'ecs:UpdateService'
+              - 'ecs:DescribeServices'
+              - 'ecs:DescribeTaskDefinition'
+            Resource: '*'
+
+# Group creation for the user
+  IAMgrupoDeploy:
+    Type: AWS::IAM::Group
+    Properties: 
+      GroupName: !Join [ "-", [!Ref ambiente, Deploy-users]]  
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess
+        - arn:aws:iam::aws:policy/AmazonEC2FullAccess
+        - !Ref gitHubPolicy 
+
+# User creation for the infra pipeline deployment
+  GitHubActionsUser:
+    Type: AWS::IAM::User
+    #DependsOn: IAMgrupoDeploy
+    Properties:
+      Groups: 
+      - !Join [ "-", [!Ref ambiente, Deploy-users]]      
+      UserName: !Sub '${AWS::StackName}-GitHubActionsUser' 
+      Tags:
+      - Key: project
+        Value: Devsu
+      - Key: environment
+        Value: !Ref ambiente
+
+# Access key generation for the user GitHubActionsUser
+  gitHubActionsAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties: 
+      Status: Active
+      UserName: !Ref GitHubActionsUser
+
+# Store the access keys generated
+  MySecretDB:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: !Sub '${AWS::StackName}-secrets-GitHubActions'   
+      Description: GitHubActions pipeline credentials
+      SecretString: !Join [ "", ['{"accessKeyID":"', !Ref gitHubActionsAccessKey,'","secretAccessKey":"',!GetAtt gitHubActionsAccessKey.SecretAccessKey,'"}']]    
+      Tags:
+      - Key: project
+        Value: Devsu
+      - Key: environment
+        Value: !Ref ambiente
+
+
+############################# OUTPUTS ###############################################
+Outputs:
+  ListenerDevsu:
+    Description: Listener Arn
+    Value: !Ref ListenerDevsu
+
