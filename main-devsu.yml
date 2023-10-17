@@ -11,19 +11,19 @@ Parameters:
   myVPC:            
     Type: String
     Description: 'VPC id'
-    Default: vpc-0159436c4590009b7
+    Default: vpc-0ea1e66cfa389c638
   subnetA:          
     Type: String
     Description: 'Subnet A'
-    Default: subnet-0cb4f49cf8b672f24  
+    Default: subnet-012c74a4e9c757fd6  
   subnetB:                                        
     Type: String
     Description: 'Subnet B'
-    Default: subnet-0180825a0c04a65c9 
+    Default: subnet-0887fb6f182e25c28 
   myVPCCidrBlock:
     Type: String
     Description: 'cidr block for VPC'
-    Default: x.x.x.x/xx      # to be defined   
+    Default: 172.28.218.0/25       
 
 ####### ECS parameters ######
   imagenContainer:
@@ -35,7 +35,7 @@ Parameters:
     Default: 8080
   HealthCheckPath:
     Type: String
-    Default: /              # /healthcheck
+    Default: /              
   MinContainers:      
     Type: Number
     Default: 2

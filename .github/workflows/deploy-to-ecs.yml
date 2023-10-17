@@ -13,20 +13,20 @@ on:
         default: "dev"
       subnetA:          
         description: 'Subnet A'
-        default: subnet-0cb4f49cf8b672f24  
+        default: subnet-012c74a4e9c757fd6  
         required: true             
       subnetB:                                        
         description: 'Subnet B'
-        default: subnet-0180825a0c04a65c9 
+        default: subnet-0887fb6f182e25c28 
         required: true   
       vpc:
         description: 'VPC to deploy'
         required: true
-        default: 'vpc-083c83366daaa668d'
+        default: 'vpc-0ea1e66cfa389c638'
       myVPCCidrBlock:
         description: 'cidr block used on vpc'
         required: true
-        default: 'x.x.x.x/xx'      # to be defined
+        default: '172.28.218.0/25'      # to be defined
 
 jobs:
   cloudformation:

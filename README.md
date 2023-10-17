@@ -16,6 +16,6 @@ In this repo you can find:
 
 ### Remarks:
     - Excution of Cloudformation template on a GitHub Actions workflow.
-    Access keys configured as secrets on GitHub Actions.
+    - Access keys configured as secrets on GitHub Actions.
     - Values received as parameters to be reutilized on different environments.
   
