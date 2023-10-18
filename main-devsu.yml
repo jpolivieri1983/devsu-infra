@@ -388,69 +388,6 @@ Resources:
       NamespaceId: !Ref PrivateNamespace
 
 
-########################### ECR ########################### 
-# Group for users
-  IAMgrupoECR:
-    Type: AWS::IAM::Group
-    Properties: 
-      GroupName: !Join [ "-", [!Ref ambiente, ECR-users]]  
-      ManagedPolicyArns: 
-        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess              
-        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-
-# User for ECR
-  userECR:
-    Type: AWS::IAM::User
-    Properties:
-      Groups: 
-      - !Join [ "-", [!Ref ambiente, ECR-users]]  
-      UserName: !Sub '${AWS::StackName}-userECR' 
-      Tags:
-      - Key: project
-        Value: Devsu
-      - Key: environment
-        Value: !Ref ambiente
-
-# Repo for images 
-  RepositoryDevsu: 
-    Type: AWS::ECR::Repository
-    DependsOn: 
-      - userECR
-      - GitHubActionsUser
-    Properties: 
-      RepositoryName: !Sub '${AWS::StackName}-ecr-devsu'
-      LifecyclePolicy:
-        LifecyclePolicyText: "{\n \"rules\": [\n {\n  \"rulePriority\": 1,\n  \"description\": \"Keep last images\",\n  \"selection\": {\n  \"tagStatus\": \"any\",\n  \"countType\": \"imageCountMoreThan\",\n  \"countNumber\": 7\n },\n \"action\": {\n   \"type\": \"expire\"\n  }\n }\n ]\n}\n }"   
-      RepositoryPolicyText: 
-        Version: "2012-10-17"
-        Statement: 
-          - 
-            Sid: AllowPushPull
-            Effect: Allow
-            Principal: 
-              AWS: 
-                - !GetAtt userECR.Arn   
-                - !GetAtt GitHubActionsUser.Arn 
-                #- !Ref GitHubActionsUser
-              Service: 
-                - ecs-tasks.amazonaws.com                  
-            Action: 
-              - "ecr:GetAuthorizationToken"
-              - "ecr:GetDownloadUrlForLayer"
-              - "ecr:BatchGetImage"
-              - "ecr:BatchCheckLayerAvailability"
-              - "ecr:PutImage"
-              - "ecr:InitiateLayerUpload"
-              - "ecr:UploadLayerPart"
-              - "ecr:CompleteLayerUpload"
-              - "ecr:*"
-      Tags:
-      - Key: project
-        Value: Devsu
-      - Key: environment
-        Value: !Ref ambiente
-
-
 ############################# IAM ######################### 
 # Policy to access and execute the ECS deployment
   gitHubPolicy:
