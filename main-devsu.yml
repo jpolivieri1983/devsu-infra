@@ -26,7 +26,7 @@ Parameters:
     Default: 172.28.218.0/25       
 
 ####### ECS parameters ######
-  imagenContainer:
+  imagenContainerDevsu:
     Type: String
     Description: 'docker image for Devsu Service'
     Default: XXXXXXXXXXXX.dkr.ecr.us-east-1.amazonaws.com/repo-Devsu:latest     # IMAGE_NAME  

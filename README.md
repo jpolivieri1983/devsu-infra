@@ -1,12 +1,14 @@
 # Infrastructure creation for Devsu Practical Assessment
 
 In this repo you can find:
+
 ## Infrastructure definition
 - Cloudformation yaml file (main-devsu.yml) with resources definition, including the ECS cluster which will execute the docker image from the practical assessment.
 
 ### Remarks:
+    Parameters defining ECS cluster behavior:
     - Minimum amount of containers running: 2
-    - Maximum amount of containers running: 4
+    - Maximum amount of containers running: 4 (in order to have always 2 containers running during deployments of new tasks)
     - Desired amount of containers running: 2 
     - Auto Scaling configured at 80% of average cpu utilization.
 
