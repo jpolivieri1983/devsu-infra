@@ -29,7 +29,7 @@ Parameters:
   imagenContainerDevsu:
     Type: String
     Description: 'docker image for Devsu Service'
-    Default: XXXXXXXXXXXX.dkr.ecr.us-east-1.amazonaws.com/repo-Devsu:latest     # IMAGE_NAME  
+    Default: jolivieridocker/devsu:latest      
   ContainerPortDevsu:
     Type: Number
     Default: 8080
